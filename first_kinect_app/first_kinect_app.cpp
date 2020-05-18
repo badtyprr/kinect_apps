@@ -1,5 +1,7 @@
 // first_kinect_app.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
+// NuGet dependencies:
+// * Microsoft.Azure.Kinect.Sensor
+// * spdlog.native
 
 // C++ Libraries
 #include <iostream>
@@ -115,23 +117,26 @@ int main()
                 spdlog::get("console")->info("Received IR frame {}", i);
                 log_frame_info(ir);
             }
+
+            // Release image object
+            k4a_image_release(depth);
+            k4a_image_release(rgb);
+            k4a_image_release(ir);
+            // Release capture object
+            k4a_capture_release(capture);
             break;
         case K4A_WAIT_RESULT_FAILED:
             spdlog::get("console")->info("FAILED to capture frame {}", i);
+            // Capture objects do not need to be released when nothing is captured
             break;
         case K4A_WAIT_RESULT_TIMEOUT:
             spdlog::get("console")->info("TIMED OUT when capturing frame {}", i);
+            // Capture objects do not need to be released when nothing is captured
             break;
         default:
             break;
         }
 
-        // Release image object
-        k4a_image_release(depth);
-        k4a_image_release(rgb);
-        k4a_image_release(ir);
-        // Release capture object
-        k4a_capture_release(capture);
         // Increment loop index
         i++;
     }
