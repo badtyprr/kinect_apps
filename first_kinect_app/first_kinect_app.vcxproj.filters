@@ -23,7 +23,10 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="errors.h">
+    <ClInclude Include="errors.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="first_kinect_app.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
