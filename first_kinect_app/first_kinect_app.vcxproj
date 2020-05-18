@@ -152,6 +152,9 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="errors.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\Microsoft.Azure.Kinect.Sensor.1.4.1-beta.0\build\native\Microsoft.Azure.Kinect.Sensor.targets" Condition="Exists('..\packages\Microsoft.Azure.Kinect.Sensor.1.4.1-beta.0\build\native\Microsoft.Azure.Kinect.Sensor.targets')" />

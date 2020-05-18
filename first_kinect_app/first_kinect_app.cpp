@@ -8,6 +8,8 @@
 // Logging Libraries
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
+// User Libraries
+#include "errors.h"
 
 int main()
 {
@@ -19,11 +21,15 @@ int main()
     uint32_t count = k4a_device_get_installed_count();
     spdlog::get("console")->info("There are {} Kinect devices on your computer.", count);
     k4a_device_t kinect = nullptr;
-    k4a_result_t kinect_result;
     // Connect to the Kinect device that comes up first
     // Results: K4A_RESULT_SUCCEEDED = 0, K4A_RESULT_FAILED = Non-zero
-    kinect_result = k4a_device_open(K4A_DEVICE_DEFAULT, &kinect);
-    spdlog::get("console")->info("Attempted to connect with Kinect with result code: {}", kinect_result);
+    if (K4A_FAILED(k4a_device_open(K4A_DEVICE_DEFAULT, &kinect))) {
+        spdlog::get("console")->info("Attempted to connect with Kinect, and it failed!");
+        return 0;
+    }
+    else
+        spdlog::get("console")->info("Attempted to connect with Kinect, and it succeeded!");
+    
     // Get the size of the serial number
     size_t serial_size = 0;
     k4a_device_get_serialnum(kinect, NULL, &serial_size);
@@ -42,6 +48,7 @@ int main()
     config.color_resolution = K4A_COLOR_RESOLUTION_720P;
     // Start Camera
     k4a_device_start_cameras(kinect, &config);
+
 
 
     // Close Cameras
