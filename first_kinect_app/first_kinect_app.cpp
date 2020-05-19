@@ -124,6 +124,8 @@ int main()
             k4a_image_release(ir);
             // Release capture object
             k4a_capture_release(capture);
+            // Increment frame index
+            i++;
             break;
         case K4A_WAIT_RESULT_FAILED:
             spdlog::get("console")->info("FAILED to capture frame {}", i);
@@ -136,9 +138,6 @@ int main()
         default:
             break;
         }
-
-        // Increment loop index
-        i++;
     }
 
 
