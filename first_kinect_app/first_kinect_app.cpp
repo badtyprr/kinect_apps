@@ -5,14 +5,26 @@
 
 // C++ Libraries
 #include <iostream>
+#include <mutex>
+#include <thread>
+#include <chrono>
 // Kinect Libraries
 #include <k4a/k4a.h>
+// OpenCV Libraries
+#include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
 // Logging Libraries
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 // User Libraries
 #include "errors.hpp"
 #include "first_kinect_app.hpp"
+
+
+// Thread
+std::mutex mtx;
+cv::Mat frame(720, 1280, CV_8UC4);
 
 
 void log_frame_info(k4a_image_t image)
@@ -38,8 +50,37 @@ void log_frame_info(k4a_image_t image)
     sys_timestamp = k4a_image_get_system_timestamp_nsec(image);
     white_balance = k4a_image_get_white_balance(image);
 
-    spdlog::get("console")->info("timestamp: {}us, sys timestamp: {}ns, {}x{} frame, format {}, stride {}px, iso {}, exposure {}us, white balance {}K, size {}B",
+    spdlog::get("console")->info("timestamp: {}us, sys timestamp: {}ns, {}x{} frame, format {}, stride {}px, iso {}, exposure {}us, white balance {}K, size {}Bytes",
         timestamp, sys_timestamp, width, height, image_format_to_string[format], stride, iso, exposure, white_balance, size);
+}
+
+// NOTE: K4A to Mat needs to finish well before 33 ms to not overflow the capture queue
+void k4a_to_mat(k4a_image_t image)
+{
+    std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+    mtx.lock();
+    // Get buffer
+    uint8_t* buffer = k4a_image_get_buffer(image);
+    frame = cv::Mat(k4a_image_get_height_pixels(image), k4a_image_get_width_pixels(image), CV_8UC4, static_cast<void*>(buffer));
+    mtx.unlock();
+    std::chrono::high_resolution_clock::time_point stop = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(stop - start);
+    spdlog::get("console")->info("k4a_to_mat took {} seconds.", time_span.count());
+}
+
+void display_frame()
+{
+    // Setup Display Window
+    cv::namedWindow("RGB Image");
+    while (true)
+    {
+        mtx.lock();
+        cv::imshow("RGB Image", frame);
+        cv::waitKey(int(1/30.f*1000/2));
+        mtx.unlock();
+    }
+    // Destroy Windows
+    cv::destroyAllWindows();
 }
 
 
@@ -49,6 +90,7 @@ int main()
     auto stdout_logger = spdlog::stdout_color_mt("console");
     auto stderr_logger = spdlog::stderr_color_mt("stderr");
     spdlog::get("console")->info("Starting First Kinect Application");
+    
     // Determines how many Kinect devices are installed
     uint32_t count = k4a_device_get_installed_count();
     spdlog::get("console")->info("There are {} Kinect devices on your computer.", count);
@@ -95,6 +137,8 @@ int main()
     int width, height, stride;
     uint64_t timestamp, exposure;
     k4a_image_format_t format;
+    //std::thread display_thread(display_frame);
+
     while (i < N_CAPTURES)
     {
         switch (kinect_wait_result = k4a_device_get_capture(kinect, &capture, CAPTURE_TIMEOUT_MS))
@@ -118,6 +162,9 @@ int main()
                 log_frame_info(ir);
             }
 
+            // Copy k4a image to the OpenCV display Mat
+            //k4a_to_mat(rgb);
+
             // Release image object
             k4a_image_release(depth);
             k4a_image_release(rgb);
@@ -140,6 +187,8 @@ int main()
         }
     }
 
+    // Join Threads
+    //display_thread.join();
     // Close Cameras
     k4a_device_stop_cameras(kinect);
     // Close Kinect Device
