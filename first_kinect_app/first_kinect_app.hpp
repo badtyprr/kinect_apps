@@ -3,9 +3,9 @@
 #include <map>
 #include <string>
 
-#define N_CAPTURES 30
+constexpr auto N_CAPTURES = 30;
 // Capture timeout minimum is 525 ms.
-#define CAPTURE_TIMEOUT_MS 578
+constexpr auto CAPTURE_TIMEOUT_MS = 578;
 
 std::map<k4a_image_format_t, std::string> image_format_to_string = {
 	{K4A_IMAGE_FORMAT_COLOR_MJPG, "MJPG"},
