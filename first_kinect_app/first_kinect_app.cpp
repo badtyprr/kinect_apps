@@ -5,6 +5,9 @@
 // * spdlog.native
 // * glfw
 // * glm
+//
+// TODO:
+// * The capture loop needs to be TIGHT
 
 
 // C++ Libraries
@@ -28,12 +31,7 @@
 #include "first_kinect_app.hpp"
 
 
-// Global Variables
-GLFWwindow* window;
-cv::Mat frame(720, 1280, CV_8UC4);
-
-
-void log_frame_info(k4a_image_t image)
+void log_frame_info(const k4a_image_t &image)
 {
     int height;
     int width;
@@ -60,16 +58,9 @@ void log_frame_info(k4a_image_t image)
         timestamp, sys_timestamp, width, height, image_format_to_string[format], stride, iso, exposure, white_balance, size);
 }
 
-// NOTE: K4A to Mat needs to finish well before 33 ms to not overflow the capture queue
-void k4a_to_mat(k4a_image_t image)
+cv::Mat k4a_to_mat(const k4a_image_t &image)
 {
-    std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-    // Get buffer
-    uint8_t* buffer = k4a_image_get_buffer(image);
-    frame = cv::Mat(k4a_image_get_height_pixels(image), k4a_image_get_width_pixels(image), CV_8UC4, static_cast<void*>(buffer));
-    std::chrono::high_resolution_clock::time_point stop = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(stop - start);
-    spdlog::get("console")->info("k4a_to_mat took {} seconds.", time_span.count());
+    return cv::Mat(k4a_image_get_height_pixels(image), k4a_image_get_width_pixels(image), CV_8UC4, static_cast<void*>(k4a_image_get_buffer(image)));
 }
 
 void display_frame()
@@ -79,14 +70,14 @@ void display_frame()
     while (true)
     {
         cv::imshow("RGB Image", frame);
-        cv::waitKey(int(1/30.f*1000/2));
+        cv::waitKey(10);
     }
     // Destroy Windows
     cv::destroyAllWindows();
 }
 
 
-void initialize_window()
+void initialize_window(GLFWwindow **window)
 {
     if (glfwVulkanSupported() == GLFW_TRUE)
         spdlog::get("console")->info("Vulkan is available, at least for compute.");
@@ -107,20 +98,20 @@ void initialize_window()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Not OpenGL or OpenGL ES, it's Vulkan!
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
 
-    window = glfwCreateWindow(RESOLUTION_X, RESOLUTION_Y, "Kinect Camera", nullptr, nullptr);
+    *window = glfwCreateWindow(RESOLUTION_X, RESOLUTION_Y, "Kinect Camera", nullptr, nullptr);
 
     uint32_t extensionCount = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); // Get all layers and properties
     spdlog::get("console")->info("Supports {} Vulkan extensions.", extensionCount);
 }
 
-void close_window()
+void close_window(GLFWwindow* window)
 {
     glfwDestroyWindow(window);
     glfwTerminate();
 }
 
-void close_kinect(k4a_device_t kinect)
+void close_kinect(const k4a_device_t &kinect)
 {
     // Close Cameras
     k4a_device_stop_cameras(kinect);
@@ -137,7 +128,8 @@ int main()
     spdlog::get("console")->info("Starting First Kinect Application");
     
     // Initialize window manager and input control
-    initialize_window();
+    GLFWwindow* window = nullptr;
+    initialize_window(&window);
 
     // Determines how many Kinect devices are installed
     uint32_t count = k4a_device_get_installed_count();
@@ -249,6 +241,6 @@ int main()
         }
     }
 
-    close_window();
+    close_window(window);
     close_kinect(kinect);
 }
