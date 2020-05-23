@@ -5,28 +5,29 @@
 // * spdlog.native
 // * glfw
 // * glm
-//
-// TODO:
-// * The capture loop needs to be TIGHT
 
 
-// C++ Libraries
+// Warning suppression
+#pragma warning( disable : 26812 )
+
+
+// C++
 #include <iostream>
 #include <chrono>
-// Vulkan Library
+// Vulkan
 #include <vulkan/vulkan.h>
-// GLFW Libary
+// GLFW
 #include <GLFW/glfw3.h>
-// Kinect Libraries
+// Kinect
 #include <k4a/k4a.h>
-// OpenCV Libraries
+// OpenCV
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
-// Logging Libraries
+// Logging
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
-// User Libraries
+// User
 #include "errors.hpp"
 #include "first_kinect_app.hpp"
 
@@ -175,9 +176,6 @@ int main()
     k4a_wait_result_t kinect_wait_result;
     k4a_image_t depth = nullptr, rgb = nullptr, ir = nullptr;
     float temperatureC;
-    int width, height, stride;
-    uint64_t timestamp, exposure;
-    k4a_image_format_t format;
     double frame_period = 1.0 / FRAMERATE;
     std::chrono::high_resolution_clock::time_point start_of_frame;
     std::chrono::high_resolution_clock::time_point end_of_frame;
