@@ -1,13 +1,19 @@
 // first_kinect_app.cpp : Opens/closes Kinect, gets RGB/IR/depth frames.
 // NuGet dependencies:
 // * Microsoft.Azure.Kinect.Sensor
+// * Microsoft.Azure.Kinect.Sensor.BodyTracking
 // * spdlog.native
+// * glfw
+// * glm
+
 
 // C++ Libraries
 #include <iostream>
-#include <mutex>
-#include <thread>
 #include <chrono>
+// Vulkan Library
+#include <vulkan/vulkan.h>
+// GLFW Libary
+#include <GLFW/glfw3.h>
 // Kinect Libraries
 #include <k4a/k4a.h>
 // OpenCV Libraries
@@ -22,8 +28,8 @@
 #include "first_kinect_app.hpp"
 
 
-// Thread
-std::mutex mtx;
+// Global Variables
+GLFWwindow* window;
 cv::Mat frame(720, 1280, CV_8UC4);
 
 
@@ -58,11 +64,9 @@ void log_frame_info(k4a_image_t image)
 void k4a_to_mat(k4a_image_t image)
 {
     std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-    mtx.lock();
     // Get buffer
     uint8_t* buffer = k4a_image_get_buffer(image);
     frame = cv::Mat(k4a_image_get_height_pixels(image), k4a_image_get_width_pixels(image), CV_8UC4, static_cast<void*>(buffer));
-    mtx.unlock();
     std::chrono::high_resolution_clock::time_point stop = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(stop - start);
     spdlog::get("console")->info("k4a_to_mat took {} seconds.", time_span.count());
@@ -74,15 +78,56 @@ void display_frame()
     cv::namedWindow("RGB Image");
     while (true)
     {
-        mtx.lock();
         cv::imshow("RGB Image", frame);
         cv::waitKey(int(1/30.f*1000/2));
-        mtx.unlock();
     }
     // Destroy Windows
     cv::destroyAllWindows();
 }
 
+
+void initialize_window()
+{
+    if (glfwVulkanSupported() == GLFW_TRUE)
+        spdlog::get("console")->info("Vulkan is available, at least for compute.");
+    else
+        spdlog::get("console")->warn("Vulkan is NOT supported!");
+
+    glfwInit();
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+    glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
+    glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
+    glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_FALSE);
+    glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
+    glfwWindowHint(GLFW_SAMPLES, GLFW_DONT_CARE);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+    glfwWindowHint(GLFW_REFRESH_RATE, 60);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Not OpenGL or OpenGL ES, it's Vulkan!
+    glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
+
+    window = glfwCreateWindow(RESOLUTION_X, RESOLUTION_Y, "Kinect Camera", nullptr, nullptr);
+
+    uint32_t extensionCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); // Get all layers and properties
+    spdlog::get("console")->info("Supports {} Vulkan extensions.", extensionCount);
+}
+
+void close_window()
+{
+    glfwDestroyWindow(window);
+    glfwTerminate();
+}
+
+void close_kinect(k4a_device_t kinect)
+{
+    // Close Cameras
+    k4a_device_stop_cameras(kinect);
+    // Close Kinect Device
+    std::cout << "Closing Kinect device..." << std::endl;
+    k4a_device_close(kinect);
+}
 
 int main()
 {
@@ -91,6 +136,9 @@ int main()
     auto stderr_logger = spdlog::stderr_color_mt("stderr");
     spdlog::get("console")->info("Starting First Kinect Application");
     
+    // Initialize window manager and input control
+    initialize_window();
+
     // Determines how many Kinect devices are installed
     uint32_t count = k4a_device_get_installed_count();
     spdlog::get("console")->info("There are {} Kinect devices on your computer.", count);
@@ -103,7 +151,7 @@ int main()
     }
     else
         spdlog::get("console")->info("Attempted to connect with Kinect, and it succeeded!");
-    
+
     // Get the size of the serial number
     size_t serial_size = 0;
     k4a_device_get_serialnum(kinect, NULL, &serial_size);
@@ -137,10 +185,12 @@ int main()
     int width, height, stride;
     uint64_t timestamp, exposure;
     k4a_image_format_t format;
-    //std::thread display_thread(display_frame);
 
-    while (i < N_CAPTURES)
+    while (!glfwWindowShouldClose(window)) 
     {
+        glfwPollEvents();
+
+        // Capture Kinect frame bundle (RGB, Depth, IR)
         switch (kinect_wait_result = k4a_device_get_capture(kinect, &capture, CAPTURE_TIMEOUT_MS))
         {
         case K4A_WAIT_RESULT_SUCCEEDED:
@@ -175,11 +225,11 @@ int main()
             i++;
             break;
         case K4A_WAIT_RESULT_FAILED:
-            spdlog::get("console")->info("FAILED to capture frame {}", i);
+            spdlog::get("console")->error("FAILED to capture frame {}", i);
             // Capture objects do not need to be released when nothing is captured
             break;
         case K4A_WAIT_RESULT_TIMEOUT:
-            spdlog::get("console")->info("TIMED OUT when capturing frame {}", i);
+            spdlog::get("console")->warn("TIMED OUT when capturing frame {}", i);
             // Capture objects do not need to be released when nothing is captured
             break;
         default:
@@ -187,11 +237,6 @@ int main()
         }
     }
 
-    // Join Threads
-    //display_thread.join();
-    // Close Cameras
-    k4a_device_stop_cameras(kinect);
-    // Close Kinect Device
-    std::cout << "Closing Kinect device..." << std::endl;
-    k4a_device_close(kinect);
+    close_window();
+    close_kinect(kinect);
 }

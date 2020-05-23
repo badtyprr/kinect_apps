@@ -1,11 +1,18 @@
 #pragma once
 
+#define GLFW_INCLUDE_VULKAN
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
 #include <map>
 #include <string>
 
-constexpr auto N_CAPTURES = 30;
+//constexpr auto N_CAPTURES = 3;
 // Capture timeout minimum is 525 ms.
 constexpr auto CAPTURE_TIMEOUT_MS = 578;
+
+constexpr auto RESOLUTION_X = 1280;
+constexpr auto RESOLUTION_Y = 720;
 
 std::map<k4a_image_format_t, std::string> image_format_to_string = {
 	{K4A_IMAGE_FORMAT_COLOR_MJPG, "MJPG"},
