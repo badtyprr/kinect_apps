@@ -14,6 +14,8 @@ constexpr auto CAPTURE_TIMEOUT_MS = 578;
 constexpr auto RESOLUTION_X = 1280;
 constexpr auto RESOLUTION_Y = 720;
 
+constexpr auto FRAMERATE = 30;
+
 std::map<k4a_image_format_t, std::string> image_format_to_string = {
 	{K4A_IMAGE_FORMAT_COLOR_MJPG, "MJPG"},
 	{K4A_IMAGE_FORMAT_COLOR_NV12, "NV12"},

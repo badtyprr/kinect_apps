@@ -168,7 +168,8 @@ int main()
     config.camera_fps = K4A_FRAMES_PER_SECOND_30;
     config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
     config.color_resolution = K4A_COLOR_RESOLUTION_720P;
-    config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED;
+    config.depth_mode = K4A_DEPTH_MODE_WFOV_2X2BINNED;
+    config.depth_delay_off_color_usec = -1000;
     config.synchronized_images_only = true;
     // Start Camera
     if (K4A_FAILED(k4a_device_start_cameras(kinect, &config)))
@@ -185,9 +186,16 @@ int main()
     int width, height, stride;
     uint64_t timestamp, exposure;
     k4a_image_format_t format;
+    double frame_period = 1.0 / FRAMERATE;
+    std::chrono::high_resolution_clock::time_point start_of_frame;
+    std::chrono::high_resolution_clock::time_point end_of_frame;
+    std::chrono::duration<double, std::milli> duration;
 
     while (!glfwWindowShouldClose(window)) 
     {
+        // Start of frame timer
+        start_of_frame = std::chrono::high_resolution_clock::now();
+
         glfwPollEvents();
 
         // Capture Kinect frame bundle (RGB, Depth, IR)
@@ -212,15 +220,19 @@ int main()
                 log_frame_info(ir);
             }
 
-            // Copy k4a image to the OpenCV display Mat
-            //k4a_to_mat(rgb);
-
             // Release image object
             k4a_image_release(depth);
             k4a_image_release(rgb);
             k4a_image_release(ir);
             // Release capture object
             k4a_capture_release(capture);
+
+            // End of frame timer
+            end_of_frame = std::chrono::high_resolution_clock::now();
+            // Log the frame period duration
+            duration = end_of_frame - start_of_frame;
+            spdlog::get("console")->info("Frame {} took {} ms.", i, duration.count());
+
             // Increment frame index
             i++;
             break;
