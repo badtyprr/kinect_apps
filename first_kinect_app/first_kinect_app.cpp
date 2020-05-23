@@ -63,7 +63,7 @@ cv::Mat k4a_to_mat(const k4a_image_t &image)
     return cv::Mat(k4a_image_get_height_pixels(image), k4a_image_get_width_pixels(image), CV_8UC4, static_cast<void*>(k4a_image_get_buffer(image)));
 }
 
-void display_frame()
+void display_frame(const cv::Mat &frame)
 {
     // Setup Display Window
     cv::namedWindow("RGB Image");

@@ -42,7 +42,7 @@ std::map<k4a_image_format_t, std::string> image_format_to_string = {
 
 void log_frame_info(const k4a_image_t &image);
 cv::Mat k4a_to_mat(const k4a_image_t &image);
-void display_frame();
+void display_frame(const cv::Mat& frame);
 void initialize_window(GLFWwindow **window);
 void close_window(GLFWwindow *window);
 void close_kinect(const k4a_device_t& kinect);
