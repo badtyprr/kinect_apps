@@ -210,11 +210,11 @@ int main()
     // Stable configurations:
     // 30 fps, Depth WFOV 2x2 Binned, -1000us depth to rgb delay, 578ms timeout
     // 15 fps, Depth WFOV Unbinned, -8000us depth to rgb delay, 630ms timeout
-    config.camera_fps = K4A_FRAMES_PER_SECOND_5;
+    config.camera_fps = K4A_FRAMES_PER_SECOND_15;
     config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
     config.color_resolution = K4A_COLOR_RESOLUTION_720P;
     config.depth_mode = K4A_DEPTH_MODE_WFOV_UNBINNED;
-    config.depth_delay_off_color_usec = -4000;
+    config.depth_delay_off_color_usec = -8000;
     config.synchronized_images_only = true;
     // Start Camera
     if (K4A_FAILED(k4a_device_start_cameras(kinect, &config)))
