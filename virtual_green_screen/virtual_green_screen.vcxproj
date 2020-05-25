@@ -22,8 +22,9 @@
     <VCProjectVersion>16.0</VCProjectVersion>
     <ProjectGuid>{EEAAD5EC-5A2B-45DA-8AA2-5B20F5CCE0B9}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>firstkinectapp</RootNamespace>
+    <RootNamespace>virtual_green_screen</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>virtual_green_screen</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -155,7 +156,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="first_kinect_app.cpp" />
+    <ClCompile Include="virtual_green_screen.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="dnn_model_2_0.onnx" />
@@ -163,7 +164,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="errors.hpp" />
-    <ClInclude Include="first_kinect_app.hpp" />
+    <ClInclude Include="virtual_green_screen.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

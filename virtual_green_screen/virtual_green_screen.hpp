@@ -13,12 +13,10 @@
 
 //constexpr auto N_CAPTURES = 3;
 // Capture timeout minimum is 525 ms.
-constexpr auto CAPTURE_TIMEOUT_MS = 578;
+constexpr auto CAPTURE_TIMEOUT_MS = 630;
 
 constexpr auto RESOLUTION_X = 1280;
 constexpr auto RESOLUTION_Y = 720;
-
-constexpr auto FRAMERATE = 30;
 
 /*
  * Data

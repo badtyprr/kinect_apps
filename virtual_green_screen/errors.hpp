@@ -1,0 +1,8 @@
+#pragma once
+
+// Kinect Failures
+#define KINECT_CONNECT_FAILED 100
+#define KINECT_START_CAMERAS_FAILED 101
+
+// GLFW Failures
+#define GLFW_INITIALIZATION_FAILED 200

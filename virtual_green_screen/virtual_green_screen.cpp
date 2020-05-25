@@ -14,6 +14,8 @@
 // C++
 #include <iostream>
 #include <chrono>
+#include <stdexcept>    // provides exception propagation
+#include <cstdlib>      // provides EXIT_SUCCESS
 // Vulkan
 #include <vulkan/vulkan.h>
 // GLFW
@@ -29,7 +31,7 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 // User
 #include "errors.hpp"
-#include "first_kinect_app.hpp"
+#include "virtual_green_screen.hpp"
 
 
 void log_frame_info(const k4a_image_t &image)
@@ -77,15 +79,19 @@ void display_frame(const cv::Mat &frame)
     cv::destroyAllWindows();
 }
 
-
 void initialize_window(GLFWwindow **window)
 {
+    if (glfwInit() != GLFW_TRUE)
+    {
+        spdlog::get("console")->error("GLFW failed to initialize!");
+        throw std::runtime_error("GLFW failed to initialize!");
+    }
+
     if (glfwVulkanSupported() == GLFW_TRUE)
         spdlog::get("console")->info("Vulkan is available, at least for compute.");
     else
         spdlog::get("console")->warn("Vulkan is NOT supported!");
 
-    glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
@@ -100,10 +106,6 @@ void initialize_window(GLFWwindow **window)
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
 
     *window = glfwCreateWindow(RESOLUTION_X, RESOLUTION_Y, "Kinect Camera", nullptr, nullptr);
-
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); // Get all layers and properties
-    spdlog::get("console")->info("Supports {} Vulkan extensions.", extensionCount);
 }
 
 void close_window(GLFWwindow* window)
@@ -121,16 +123,63 @@ void close_kinect(const k4a_device_t &kinect)
     k4a_device_close(kinect);
 }
 
+void initialize_vulkan(VkInstance *instance)
+{
+    // Application Info
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "Virtual Green Screen";
+    appInfo.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
+    appInfo.pEngineName = nullptr;
+    appInfo.engineVersion = VK_MAKE_VERSION(0, 0, 0);
+    // Patch versions must always be 0, source: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#extendingvulkan-coreversions-versionnumbers
+    appInfo.apiVersion = VK_API_VERSION_1_2;   // Macro for VK_MAKE_VERSION(1, 2, 0)
+
+    // Create Info
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    // Use GLFW to get extension count
+    uint32_t glfwExtensionCount = 0;
+    const char** glfwExtensions;
+    // NOTE: GLFW appears to be returning less extensions (3) vs. Vulkan (13), why?
+    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+    createInfo.enabledExtensionCount = glfwExtensionCount;
+    createInfo.ppEnabledExtensionNames = glfwExtensions;
+
+    // Determines the global validation layers to enable
+    createInfo.enabledLayerCount = 0;
+    if (vkCreateInstance(&createInfo, nullptr, instance) != VK_SUCCESS)
+    {
+        spdlog::get("console")->error("Failed to create Vulkan instance!");
+        throw std::runtime_error("Failed to create Vulkan instance!");
+    }
+
+    // Determine the number of extensions (according to Vulkan)
+    uint32_t extensionCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); // Get all layers and properties
+    std::vector<VkExtensionProperties> extensions(extensionCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
+    spdlog::get("console")->info("Supports {} Vulkan extensions:", extensionCount);
+    for (const auto& extension : extensions)
+    {
+        spdlog::get("console")->info("\t{}", extension.extensionName);
+    }
+}
+
+void close_vulkan(const VkInstance &instance)
+{
+    vkDestroyInstance(instance, nullptr);
+}
+
 int main()
 {
     // Setup loggers
     auto stdout_logger = spdlog::stdout_color_mt("console");
     auto stderr_logger = spdlog::stderr_color_mt("stderr");
     spdlog::get("console")->info("Starting First Kinect Application");
-    
-    // Initialize window manager and input control
-    GLFWwindow* window = nullptr;
-    initialize_window(&window);
 
     // Determines how many Kinect devices are installed
     uint32_t count = k4a_device_get_installed_count();
@@ -158,11 +207,14 @@ int main()
     // Initialize with no image format, RGB resolution, depth depth mode, 2 fps, no wired sync, and a few other parameters that aren't obvious
     k4a_device_configuration_t config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
     // 30 fps, 4B per pixel, 1280x720 resolution, WFOV unbinned, synchronized images only (only when all frames are available)
-    config.camera_fps = K4A_FRAMES_PER_SECOND_30;
+    // Stable configurations:
+    // 30 fps, Depth WFOV 2x2 Binned, -1000us depth to rgb delay, 578ms timeout
+    // 15 fps, Depth WFOV Unbinned, -8000us depth to rgb delay, 630ms timeout
+    config.camera_fps = K4A_FRAMES_PER_SECOND_5;
     config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
     config.color_resolution = K4A_COLOR_RESOLUTION_720P;
-    config.depth_mode = K4A_DEPTH_MODE_WFOV_2X2BINNED;
-    config.depth_delay_off_color_usec = -1000;
+    config.depth_mode = K4A_DEPTH_MODE_WFOV_UNBINNED;
+    config.depth_delay_off_color_usec = -4000;
     config.synchronized_images_only = true;
     // Start Camera
     if (K4A_FAILED(k4a_device_start_cameras(kinect, &config)))
@@ -176,10 +228,21 @@ int main()
     k4a_wait_result_t kinect_wait_result;
     k4a_image_t depth = nullptr, rgb = nullptr, ir = nullptr;
     float temperatureC;
-    double frame_period = 1.0 / FRAMERATE;
     std::chrono::high_resolution_clock::time_point start_of_frame;
     std::chrono::high_resolution_clock::time_point end_of_frame;
     std::chrono::duration<double, std::milli> duration;
+
+    // Initialize window manager and input control
+    spdlog::get("console")->info("Initializing the GLFW window");
+    GLFWwindow* window = nullptr;
+    uint32_t glfwExtensionCount = 0;
+    const char** glfwExtensions;
+    initialize_window(&window);
+
+    // Initialize Vulkan
+    spdlog::get("console")->info("Initializing Vulkan");
+    VkInstance instance = nullptr;
+    initialize_vulkan(&instance);
 
     while (!glfwWindowShouldClose(window)) 
     {
@@ -239,6 +302,9 @@ int main()
         }
     }
 
+    close_vulkan(instance);
     close_window(window);
     close_kinect(kinect);
+
+    return EXIT_SUCCESS;
 }
