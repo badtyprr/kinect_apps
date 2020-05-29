@@ -16,6 +16,7 @@
 #include <chrono>
 #include <stdexcept>    // provides exception propagation
 #include <cstdlib>      // provides EXIT_SUCCESS
+#include <optional>     // provides optional data structure
 // Vulkan
 #include <vulkan/vulkan.h>
 // GLFW
@@ -125,6 +126,13 @@ void close_kinect(const k4a_device_t &kinect)
 
 void initialize_vulkan(VkInstance *instance)
 {
+    // Check for validation layer support, if requested
+    if (ENABLE_VALIDATION_LAYERS && !check_validation_layer_support())
+    {
+        std::string err_str = "Validation layers were requested, but one or more layers were not available!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
     // Application Info
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -139,6 +147,15 @@ void initialize_vulkan(VkInstance *instance)
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
+    if (ENABLE_VALIDATION_LAYERS)
+    {
+        createInfo.enabledLayerCount = static_cast<uint32_t>(VALIDATION_LAYERS.size());
+        createInfo.ppEnabledLayerNames = VALIDATION_LAYERS.data();
+    }
+    else
+    {
+        createInfo.enabledLayerCount = 0;
+    }
 
     // Use GLFW to get extension count
     uint32_t glfwExtensionCount = 0;
@@ -153,8 +170,9 @@ void initialize_vulkan(VkInstance *instance)
     createInfo.enabledLayerCount = 0;
     if (vkCreateInstance(&createInfo, nullptr, instance) != VK_SUCCESS)
     {
-        spdlog::get("console")->error("Failed to create Vulkan instance!");
-        throw std::runtime_error("Failed to create Vulkan instance!");
+        std::string err_str = "Failed to create Vulkan instance!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
     }
 
     // Determine the number of extensions (according to Vulkan)
@@ -172,6 +190,120 @@ void initialize_vulkan(VkInstance *instance)
 void close_vulkan(const VkInstance &instance)
 {
     vkDestroyInstance(instance, nullptr);
+}
+
+bool check_validation_layer_support()
+{
+    uint32_t layer_count;
+    vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+    std::vector<VkLayerProperties> available_layers(layer_count);
+    vkEnumerateInstanceLayerProperties(&layer_count, available_layers.data());
+    bool layer_found = false;
+
+    for (const auto& layer_name : VALIDATION_LAYERS)
+    {
+        layer_found = false;
+        for (const auto& layer : available_layers)
+        {
+            if (strcmp(layer_name, layer.layerName) == 0)
+            {
+                layer_found = true;
+                break;
+            }
+        }
+
+        if (!layer_found)
+        {
+            spdlog::get("console")->info("Layer {} not found, validation layer check failed!", layer_name);
+            return false;
+        }
+    }
+
+    spdlog::get("console")->info("All validation layers are accounted for!");
+    return true;
+}
+
+bool is_suitable_device(const VkPhysicalDevice& device)
+{
+    VkPhysicalDeviceProperties properties;
+    VkPhysicalDeviceFeatures features;
+    // Get physical device properties and features
+    vkGetPhysicalDeviceProperties(device, &properties);
+    vkGetPhysicalDeviceFeatures(device, &features);
+    
+    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && features.geometryShader && find_queue_families(device).is_complete())
+    {
+        spdlog::get("console")->info("{} is a suitable device", properties.deviceName);
+        return true;
+    }
+    else
+    {
+        spdlog::get("console")->info("{} is an unsuitable device", properties.deviceName);
+        return false;
+    }
+}
+
+void initialize_vulkan_device(const VkInstance &instance, VkPhysicalDevice *physical_device)
+{
+    uint32_t device_count;
+    vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
+    std::vector<VkPhysicalDevice> physical_devices(device_count);
+    vkEnumeratePhysicalDevices(instance, &device_count, physical_devices.data());
+    VkPhysicalDeviceProperties properties;
+    for (const auto& device : physical_devices)
+    {
+        if (is_suitable_device(device))
+        {
+            *physical_device = device;
+            // Get physical device properties
+            vkGetPhysicalDeviceProperties(device, &properties);
+            spdlog::get("console")->info("Found a suitable device: {}", properties.deviceName);
+            break;
+        }
+    }
+
+    if (*physical_device == VK_NULL_HANDLE)
+    {
+        std::string err_str = "No suitable GPU device found!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+}
+
+void close_vulkan_device()
+{
+
+}
+
+QueueFamilyIndices find_queue_families(const VkPhysicalDevice& device)
+{
+    QueueFamilyIndices indices;
+
+    // Get Queue Family properties
+    uint32_t queue_family_count;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
+    std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
+
+    // Find a Queue that supports VK_QUEUE_GRAPHICS_BIT
+    int i = 0;
+    for (const auto& queue_family : queue_families)
+    {
+        if (queue_family.queueFlags && VK_QUEUE_GRAPHICS_BIT)
+        {
+            spdlog::get("console")->info("Found a Graphics capable Queue Family: {}", i);
+            indices.graphics_family = i;
+        }
+
+        if (indices.is_complete())
+        {
+            break;
+        }
+
+        i++;
+    }
+
+    return indices;
 }
 
 int main()
@@ -243,6 +375,8 @@ int main()
     spdlog::get("console")->info("Initializing Vulkan");
     VkInstance instance = nullptr;
     initialize_vulkan(&instance);
+    VkPhysicalDevice physical_device;
+    initialize_vulkan_device(instance, &physical_device);
 
     while (!glfwWindowShouldClose(window)) 
     {
@@ -302,6 +436,7 @@ int main()
         }
     }
 
+    close_vulkan_device();
     close_vulkan(instance);
     close_window(window);
     close_kinect(kinect);
