@@ -36,8 +36,40 @@ std::map<k4a_image_format_t, std::string> image_format_to_string = {
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphics_family;
+    std::optional<uint32_t> presentation_family;
+    uint i = 0;
 
-    bool is_complete() { return graphics_family.has_value(); }
+    /*
+     * @return whether or not a queue family is a complete chain
+     */
+    bool is_complete() { return graphics_family.has_value() && presentation_family.has_value(); }
+
+    /*
+     * Iterator for the next element
+     * @return a queue family
+     */
+    std::optional<uint32_t> next()
+    {
+        switch (i)
+        {
+        case 0:
+            i++;
+            return graphics_family;
+        case 1:
+            i++;
+            return presentation_family;
+        default:
+            throw std::logic_error("Reached the end of the iterator");
+        }
+    }
+
+    /* 
+     * Resets the iterator to the start
+     */
+    void start()
+    {
+        i = 0;
+    }
 };
 
 /*
@@ -52,10 +84,19 @@ void close_window(GLFWwindow *window);
 void close_kinect(const k4a_device_t& kinect);
 bool check_validation_layer_support();
 void initialize_vulkan(VkInstance* instance);
-void initialize_vulkan_device(const VkInstance& instance, VkPhysicalDevice* physical_device);
-void close_vulkan_device();
-bool is_suitable_device(const VkPhysicalDevice& device);
-QueueFamilyIndices find_queue_families(const VkPhysicalDevice& device);
+void initialize_vulkan_physical_device(const VkInstance& instance, VkPhysicalDevice* physical_device, const VkSurfaceKHR& surface);
+void initialize_vulkan_logical_device(const VkPhysicalDevice& physical_device, VkDevice* logical_device, VkQueue* queue, const VkSurfaceKHR& surface);
+void close_vulkan_logical_device(const VkDevice& logical_device);
+void close_vulkan_physical_device(const VkPhysicalDevice& physical_device);
+void initialize_surface(const VkInstance& instance, GLFWwindow *window, VkSurfaceKHR* surface);
+bool is_suitable_device(const VkPhysicalDevice& device, const VkSurfaceKHR& surface);
+
+/*
+ * Finds the first queue family with a Graphics queue.
+ * @param device the physical device associated with the current Vulkan instance
+ * @return a QueueFamilyIndices struct that optionally contains the first queue family index with a Graphics queue
+ */
+QueueFamilyIndices find_queue_families(const VkPhysicalDevice& device, const VkSurfaceKHR& surface);
 
 /*
  * Debug

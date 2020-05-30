@@ -17,6 +17,7 @@
 #include <stdexcept>    // provides exception propagation
 #include <cstdlib>      // provides EXIT_SUCCESS
 #include <optional>     // provides optional data structure
+#include <set>          // provides set type
 // Vulkan
 #include <vulkan/vulkan.h>
 // GLFW
@@ -223,7 +224,7 @@ bool check_validation_layer_support()
     return true;
 }
 
-bool is_suitable_device(const VkPhysicalDevice& device)
+bool is_suitable_device(const VkPhysicalDevice &device, const VkSurfaceKHR &surface)
 {
     VkPhysicalDeviceProperties properties;
     VkPhysicalDeviceFeatures features;
@@ -231,8 +232,9 @@ bool is_suitable_device(const VkPhysicalDevice& device)
     vkGetPhysicalDeviceProperties(device, &properties);
     vkGetPhysicalDeviceFeatures(device, &features);
     
-    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && features.geometryShader && find_queue_families(device).is_complete())
+    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && features.geometryShader && find_queue_families(device, surface).is_complete())
     {
+
         spdlog::get("console")->info("{} is a suitable device", properties.deviceName);
         return true;
     }
@@ -243,7 +245,7 @@ bool is_suitable_device(const VkPhysicalDevice& device)
     }
 }
 
-void initialize_vulkan_device(const VkInstance &instance, VkPhysicalDevice *physical_device)
+void initialize_vulkan_physical_device(const VkInstance &instance, VkPhysicalDevice *physical_device, const VkSurfaceKHR &surface)
 {
     uint32_t device_count;
     vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
@@ -252,7 +254,7 @@ void initialize_vulkan_device(const VkInstance &instance, VkPhysicalDevice *phys
     VkPhysicalDeviceProperties properties;
     for (const auto& device : physical_devices)
     {
-        if (is_suitable_device(device))
+        if (is_suitable_device(device, surface))
         {
             *physical_device = device;
             // Get physical device properties
@@ -270,12 +272,96 @@ void initialize_vulkan_device(const VkInstance &instance, VkPhysicalDevice *phys
     }
 }
 
-void close_vulkan_device()
+void initialize_vulkan_logical_device(const VkPhysicalDevice& physical_device, VkDevice* logical_device, VkQueue* queue, const VkSurfaceKHR& surface)
 {
+    spdlog::get("console")->info("Creating Vulkan logical device...");
+    QueueFamilyIndices indices = find_queue_families(physical_device, surface);
 
+    // Create queue info structures
+    std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
+    std::set<uint32_t> unique_queue_families;
+    try
+    {
+        indices.start();
+        while (true)
+        {
+            unique_queue_families.insert(indices.next().value());
+        }
+    }
+    catch (std::logic_error e) {}
+
+    float queue_priority = 1.f;
+
+    for (const auto& queue_family : unique_queue_families)
+    {
+        VkDeviceQueueCreateInfo queue_create_info{};
+        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info.queueFamilyIndex = queue_family;
+        queue_create_info.queueCount = 1;
+        queue_create_info.pQueuePriorities = &queue_priority;
+        queue_create_infos.push_back(queue_create_info);
+    }
+
+
+    VkPhysicalDeviceFeatures features{};
+    VkDeviceCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    create_info.pQueueCreateInfos = queue_create_infos.data();
+    create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
+    create_info.pEnabledFeatures = &features;
+    create_info.enabledExtensionCount = 0;
+
+    if (ENABLE_VALIDATION_LAYERS)
+    {
+        create_info.enabledLayerCount = static_cast<uint32_t>(VALIDATION_LAYERS.size());
+        create_info.ppEnabledLayerNames = VALIDATION_LAYERS.data();
+    }
+    else
+    {
+        create_info.enabledLayerCount = 0;
+    }
+
+    if (vkCreateDevice(physical_device, &create_info, nullptr, logical_device) != VK_SUCCESS)
+    {
+        std::string err_str = "Could not create the Vulkan logical device!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+    else
+    {
+        spdlog::get("console")->info("Successfully created the logical device!");
+    }
+
+    // Gets the graphics queue, and since we only created one queue under the graphics queue, the index is 0
+    vkGetDeviceQueue(*logical_device, indices.graphics_family.value(), 0, queue);
 }
 
-QueueFamilyIndices find_queue_families(const VkPhysicalDevice& device)
+void close_vulkan_logical_device(const VkDevice &logical_device)
+{
+    vkDestroyDevice(logical_device, nullptr);
+}
+
+void close_vulkan_physical_device(const VkPhysicalDevice &physical_device)
+{
+    
+}
+
+void initialize_surface(const VkInstance &instance, GLFWwindow *window, VkSurfaceKHR *surface)
+{
+    if (glfwCreateWindowSurface(instance, window, nullptr, surface) != VK_SUCCESS)
+    {
+        std::string err_str = "Failed to create window surface!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+}
+
+void close_surface(const VkInstance& instance, const VkSurfaceKHR& surface)
+{
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+}
+
+QueueFamilyIndices find_queue_families(const VkPhysicalDevice &device, const VkSurfaceKHR &surface)
 {
     QueueFamilyIndices indices;
 
@@ -287,12 +373,24 @@ QueueFamilyIndices find_queue_families(const VkPhysicalDevice& device)
 
     // Find a Queue that supports VK_QUEUE_GRAPHICS_BIT
     int i = 0;
+    VkBool32 presentation_supported = false;
     for (const auto& queue_family : queue_families)
     {
+        presentation_supported = false;
+
+        // Graphics queue support check
         if (queue_family.queueFlags && VK_QUEUE_GRAPHICS_BIT)
         {
             spdlog::get("console")->info("Found a Graphics capable Queue Family: {}", i);
             indices.graphics_family = i;
+
+            // Presentation queue support check
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentation_supported);
+
+            if (presentation_supported)
+            {
+                indices.presentation_family = i;
+            }
         }
 
         if (indices.is_complete())
@@ -375,8 +473,18 @@ int main()
     spdlog::get("console")->info("Initializing Vulkan");
     VkInstance instance = nullptr;
     initialize_vulkan(&instance);
+    // Initialize WSI Surface
+    // NOTE: The window surface needs to be created right after the instance creation, because it can actually influence the physical device selection.
+    // Thanks: https://vulkan-tutorial.com/en/Drawing_a_triangle/Presentation/Window_surface
+    VkSurfaceKHR surface;
+    initialize_surface(instance, window, &surface);
+    // Initialize physical, logical devices and queues
     VkPhysicalDevice physical_device;
-    initialize_vulkan_device(instance, &physical_device);
+    VkDevice logical_device;
+    VkQueue graphics_queue;
+    VkQueue presentation_queue;
+    initialize_vulkan_physical_device(instance, &physical_device, surface);
+    initialize_vulkan_logical_device(physical_device, &logical_device, &graphics_queue, surface);
 
     while (!glfwWindowShouldClose(window)) 
     {
@@ -436,7 +544,9 @@ int main()
         }
     }
 
-    close_vulkan_device();
+    close_vulkan_logical_device(logical_device);
+    close_vulkan_physical_device(physical_device);
+    close_surface(instance, surface);
     close_vulkan(instance);
     close_window(window);
     close_kinect(kinect);
