@@ -1,4 +1,4 @@
-# kinect_apps
+# Kinect Apps
 Various apps to evaluate the Azure Kinect Camera
 
 ## Virtual Green Screen
