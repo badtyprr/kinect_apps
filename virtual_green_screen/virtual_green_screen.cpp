@@ -9,6 +9,16 @@
  *
  * This is probably a helpful reference for Kinect v4 code:
  * https://github.com/MarekKowalski/LiveScan3D/blob/AzureKinect/src/LiveScanClient/azureKinectCapture.cpp#L205
+ * 
+ * Reference for point cloud quality:
+ * https://www.youtube.com/watch?v=NrIgjK_PeQU
+ * 
+ * Library for point cloud processing
+ * - PCL https://pointclouds.org/
+ * - Cilantro https://github.com/kzampog/cilantro
+ *
+ * "Awesome" Resources:
+ * https://github.com/mmolero/awesome-point-cloud-processing
  */
 
 
