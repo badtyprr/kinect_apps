@@ -1,10 +1,15 @@
-// first_kinect_app.cpp : Opens/closes Kinect, gets RGB/IR/depth frames.
-// NuGet dependencies:
-// * Microsoft.Azure.Kinect.Sensor
-// * Microsoft.Azure.Kinect.Sensor.BodyTracking
-// * spdlog.native
-// * glfw
-// * glm
+/* virtual_green_screen.cpp : Masks RGB frames with an aligned depth frame and outputs to a window.
+ *
+ * NuGet dependencies:
+ * - Microsoft.Azure.Kinect.Sensor
+ * - Microsoft.Azure.Kinect.Sensor.BodyTracking
+ * - spdlog.native
+ * - glfw
+ * - glm
+ *
+ * This is probably a helpful reference for Kinect v4 code:
+ * https://github.com/MarekKowalski/LiveScan3D/blob/AzureKinect/src/LiveScanClient/azureKinectCapture.cpp#L205
+ */
 
 
 // Warning suppression
@@ -473,7 +478,7 @@ int main()
     spdlog::get("console")->info("Initializing Vulkan");
     VkInstance instance = nullptr;
     initialize_vulkan(&instance);
-    // Initialize WSI Surface
+    // Initialize Surface
     // NOTE: The window surface needs to be created right after the instance creation, because it can actually influence the physical device selection.
     // Thanks: https://vulkan-tutorial.com/en/Drawing_a_triangle/Presentation/Window_surface
     VkSurfaceKHR surface;
