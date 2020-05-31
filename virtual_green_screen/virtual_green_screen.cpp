@@ -107,7 +107,7 @@ void initialize_window(GLFWwindow **window)
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Not OpenGL or OpenGL ES, it's Vulkan!
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
 
-    *window = glfwCreateWindow(RESOLUTION_X, RESOLUTION_Y, "Kinect Camera", nullptr, nullptr);
+    *window = glfwCreateWindow(RESOLUTION_X, RESOLUTION_Y, "Virtual Green Screen", nullptr, nullptr);
 }
 
 void close_window(GLFWwindow* window)
@@ -409,7 +409,7 @@ int main()
     // Setup loggers
     auto stdout_logger = spdlog::stdout_color_mt("console");
     auto stderr_logger = spdlog::stderr_color_mt("stderr");
-    spdlog::get("console")->info("Starting First Kinect Application");
+    spdlog::get("console")->info("Starting Virtual Green Screen Application");
 
     // Determines how many Kinect devices are installed
     uint32_t count = k4a_device_get_installed_count();
