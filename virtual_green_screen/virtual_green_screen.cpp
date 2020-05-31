@@ -15,7 +15,7 @@
  * 
  * Library for point cloud processing
  * - PCL https://pointclouds.org/
- * - Cilantro https://github.com/kzampog/cilantro
+ * - Cilantro https://github.com/kzampog/cilantro (paper: https://arxiv.org/pdf/1807.00399.pdf)
  *
  * "Awesome" Resources:
  * https://github.com/mmolero/awesome-point-cloud-processing
