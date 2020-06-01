@@ -2,7 +2,6 @@
  *
  * NuGet dependencies:
  * - Microsoft.Azure.Kinect.Sensor
- * - Microsoft.Azure.Kinect.Sensor.BodyTracking
  * - spdlog.native
  * - glfw
  * - glm
