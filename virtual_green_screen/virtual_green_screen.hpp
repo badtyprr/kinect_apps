@@ -15,8 +15,8 @@
 // Capture timeout minimum is 525 ms.
 constexpr auto CAPTURE_TIMEOUT_MS = 630;
 
-constexpr auto RESOLUTION_X = 1280;
-constexpr auto RESOLUTION_Y = 720;
+constexpr auto WIDTH = 1280;
+constexpr auto HEIGHT = 720;
 
 /*
  * Data
@@ -72,6 +72,13 @@ struct QueueFamilyIndices {
     }
 };
 
+struct SwapChainSupportDetails
+{
+    VkSurfaceCapabilitiesKHR capabilities;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> present_modes;
+};
+
 /*
  * Functions
  */
@@ -90,6 +97,8 @@ void close_vulkan_logical_device(const VkDevice& logical_device);
 void close_vulkan_physical_device(const VkPhysicalDevice& physical_device);
 void initialize_surface(const VkInstance& instance, GLFWwindow *window, VkSurfaceKHR* surface);
 bool is_suitable_device(const VkPhysicalDevice& device, const VkSurfaceKHR& surface);
+bool has_extensions(const VkPhysicalDevice& physical_device);
+VkSurfaceFormatKHR choose_swap_surface_format(const std::vector<VkSurfaceFormatKHR>& available_formats);
 
 /*
  * Finds the first queue family with a Graphics queue.
@@ -97,6 +106,19 @@ bool is_suitable_device(const VkPhysicalDevice& device, const VkSurfaceKHR& surf
  * @return a QueueFamilyIndices struct that optionally contains the first queue family index with a Graphics queue
  */
 QueueFamilyIndices find_queue_families(const VkPhysicalDevice& device, const VkSurfaceKHR& surface);
+
+bool has_adequate_basic_swap_chain(const VkPhysicalDevice& physical_device, const VkSurfaceKHR& surface);
+SwapChainSupportDetails query_swap_chain_support(const VkPhysicalDevice& physical_device, const VkSurfaceKHR& surface);
+VkPresentModeKHR choose_swap_present_mode(const std::vector<VkPresentModeKHR>& available_present_modes);
+VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR& capabilities);
+void initialize_swap_chain(const VkDevice& logical_device, const VkPhysicalDevice& physical_device, const VkSurfaceKHR& surface, VkSwapchainKHR* swap_chain);
+
+/*
+ * Extensions
+ */
+std::vector<const char*> extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
 
 /*
  * Debug
