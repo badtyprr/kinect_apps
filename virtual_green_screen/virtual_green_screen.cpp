@@ -868,6 +868,8 @@ int main()
 
     // Get swap chain images
     get_swap_chain_images(logical_device, swap_chain, swap_chain_images);
+    // Initialize image views
+    initialize_image_views(logical_device);
 
     while (!glfwWindowShouldClose(window)) 
     {
@@ -927,6 +929,7 @@ int main()
         }
     }
 
+    close_image_views(logical_device);
     close_swap_chain(logical_device, swap_chain);
     close_vulkan_logical_device(logical_device);
     close_vulkan_physical_device(physical_device);
