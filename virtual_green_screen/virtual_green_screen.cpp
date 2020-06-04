@@ -58,6 +58,7 @@ VkPresentModeKHR present_mode;
 VkExtent2D extent;
 VkSwapchainKHR swap_chain;
 std::vector<VkImage> swap_chain_images;
+std::vector<VkImageView> swap_chain_image_views;
 
 
 void log_frame_info(const k4a_image_t &image)
@@ -692,6 +693,93 @@ void get_swap_chain_images(const VkDevice& logical_device, const VkSwapchainKHR&
     vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, nullptr);
     swap_chain_images.resize(image_count);
     vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, swap_chain_images.data());
+}
+
+void initialize_image_views(const VkDevice& logical_device)
+{
+    /*
+    // Provided by VK_VERSION_1_0
+    typedef enum VkImageViewType {
+        VK_IMAGE_VIEW_TYPE_1D = 0,
+        VK_IMAGE_VIEW_TYPE_2D = 1,
+        VK_IMAGE_VIEW_TYPE_3D = 2,
+        VK_IMAGE_VIEW_TYPE_CUBE = 3,
+        VK_IMAGE_VIEW_TYPE_1D_ARRAY = 4,
+        VK_IMAGE_VIEW_TYPE_2D_ARRAY = 5,
+        VK_IMAGE_VIEW_TYPE_CUBE_ARRAY = 6,
+    } VkImageViewType;
+    */
+    /* 
+    // Provided by VK_VERSION_1_0
+    typedef struct VkImageSubresourceRange {
+        VkImageAspectFlags    aspectMask;
+        uint32_t              baseMipLevel;
+        uint32_t              levelCount;
+        uint32_t              baseArrayLayer;
+        uint32_t              layerCount;
+    } VkImageSubresourceRange;
+    */
+    /*
+    // Provided by VK_VERSION_1_0
+    typedef enum VkImageAspectFlagBits {
+        VK_IMAGE_ASPECT_COLOR_BIT = 0x00000001,
+        VK_IMAGE_ASPECT_DEPTH_BIT = 0x00000002,
+        VK_IMAGE_ASPECT_STENCIL_BIT = 0x00000004,
+        VK_IMAGE_ASPECT_METADATA_BIT = 0x00000008,
+        VK_IMAGE_ASPECT_PLANE_0_BIT = 0x00000010,
+        VK_IMAGE_ASPECT_PLANE_1_BIT = 0x00000020,
+        VK_IMAGE_ASPECT_PLANE_2_BIT = 0x00000040,
+        VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT = 0x00000080,
+        VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT = 0x00000100,
+        VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT = 0x00000200,
+        VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT = 0x00000400,
+        VK_IMAGE_ASPECT_PLANE_0_BIT_KHR = VK_IMAGE_ASPECT_PLANE_0_BIT,
+        VK_IMAGE_ASPECT_PLANE_1_BIT_KHR = VK_IMAGE_ASPECT_PLANE_1_BIT,
+        VK_IMAGE_ASPECT_PLANE_2_BIT_KHR = VK_IMAGE_ASPECT_PLANE_2_BIT,
+    } VkImageAspectFlagBits;
+
+    */
+    swap_chain_image_views.resize(swap_chain_images.size());
+    for (size_t i = 0; i < swap_chain_images.size(); i++)
+    {
+        VkImageViewCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        create_info.image = swap_chain_images[i];
+        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        create_info.format = surface_format.format;
+        // Swizzle identity is the same color channel as the image color channel, no change
+        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        // specifying which aspect(s) of the image are included in the view.
+        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // So, we are only getting RGB values
+        create_info.subresourceRange.baseArrayLayer = 0;    // first array layer accessible to the view.
+        create_info.subresourceRange.baseMipLevel = 0;  // first mipmap level accessible to the view.
+        create_info.subresourceRange.layerCount = 1;    // number of array layers (starting from baseArrayLayer) accessible to the view.
+        create_info.subresourceRange.levelCount = 1;    // number of mipmap levels (starting from baseMipLevel) accessible to the view.
+
+        // Create the image view
+        if (vkCreateImageView(logical_device, &create_info, nullptr, &swap_chain_image_views[i]) != VK_SUCCESS) 
+        {
+            std::string err_str = "Failed to create image views!";
+            spdlog::get("console")->error(err_str);
+            throw std::runtime_error(err_str);
+        }
+        else
+        {
+            spdlog::get("console")->error("Successfully create an iamge view");
+        }
+    }
+}
+
+void close_image_views(const VkDevice& logical_device)
+{
+    for (const auto& image_view : swap_chain_image_views)
+    {
+        vkDestroyImageView(logical_device, image_view, nullptr);
+        spdlog::get("console")->info("Successfully closed an image view");
+    }
 }
 
 int main()
