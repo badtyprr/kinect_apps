@@ -768,7 +768,7 @@ void initialize_image_views(const VkDevice& logical_device)
         }
         else
         {
-            spdlog::get("console")->error("Successfully create an iamge view");
+            spdlog::get("console")->info("Successfully create an iamge view");
         }
     }
 }
