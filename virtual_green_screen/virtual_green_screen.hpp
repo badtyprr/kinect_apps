@@ -113,6 +113,16 @@ VkPresentModeKHR choose_swap_present_mode(const std::vector<VkPresentModeKHR>& a
 VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR& capabilities);
 void initialize_swap_chain(const VkDevice& logical_device, const VkPhysicalDevice& physical_device, const VkSurfaceKHR& surface, VkSwapchainKHR* swap_chain);
 
+void close_swap_chain(const VkDevice& logical_device, const VkSwapchainKHR& swap_chain);
+void get_swap_chain_images(const VkDevice& logical_device, const VkSwapchainKHR& swap_chain, std::vector<VkImage>& swap_chain_images);
+void initialize_image_views(const VkDevice& logical_device);
+void close_image_views(const VkDevice& logical_device);
+void initialize_graphics_pipeline(const VkDevice& logical_device);
+void close_graphics_pipeline(const VkDevice& logical_device);
+VkShaderModule create_shader_module(const std::vector<char>& code, const VkDevice& logical_device);
+void initialize_render_pass(const VkDevice& logical_device);
+void close_render_pass(const VkDevice& logical_device);
+
 /*
  * Extensions
  */

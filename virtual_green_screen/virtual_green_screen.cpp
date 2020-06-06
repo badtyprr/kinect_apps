@@ -34,6 +34,7 @@
 #include <set>          // provides set type
 #include <cstdint>      // Necessary for UINT32_MAX
 #include <algorithm>    // provides std::min, std::max
+#include <fstream>
 // Vulkan
 #include <vulkan/vulkan.h>
 // GLFW
@@ -59,6 +60,8 @@ VkExtent2D extent;
 VkSwapchainKHR swap_chain;
 std::vector<VkImage> swap_chain_images;
 std::vector<VkImageView> swap_chain_image_views;
+VkRenderPass render_pass;
+VkPipelineLayout pipeline_layout;
 
 
 void log_frame_info(const k4a_image_t &image)
@@ -86,6 +89,31 @@ void log_frame_info(const k4a_image_t &image)
 
     spdlog::get("console")->info("timestamp: {}us, sys timestamp: {}ns, {}x{} frame, format {}, stride {}px, iso {}, exposure {}us, white balance {}K, size {}Bytes",
         timestamp, sys_timestamp, width, height, image_format_to_string[format], stride, iso, exposure, white_balance, size);
+}
+
+static std::vector<char> read_file(const std::string& filename) {
+    // ate means seek to the end of the file upon open, and binary just means binary
+    // Thanks: https://en.cppreference.com/w/cpp/io/ios_base/openmode
+    // The advantage of starting to read at the end of the file is that we can use the read position to determine the size of the file and allocate a buffer.
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+        std::string err_str = "failed to open file!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+
+    // tellg returns the position of the current character in the input stream.
+    size_t file_size = (size_t)file.tellg();
+    // Pre-declare buffer size
+    std::vector<char> buffer(file_size);
+    // Seek to the beginning
+    file.seekg(0);
+    // Read all bytes in the file
+    file.read(buffer.data(), file_size);
+    file.close();
+
+    return buffer;
 }
 
 cv::Mat k4a_to_mat(const k4a_image_t &image)
@@ -768,7 +796,7 @@ void initialize_image_views(const VkDevice& logical_device)
         }
         else
         {
-            spdlog::get("console")->info("Successfully create an iamge view");
+            spdlog::get("console")->info("Successfully create an image view");
         }
     }
 }
@@ -780,6 +808,323 @@ void close_image_views(const VkDevice& logical_device)
         vkDestroyImageView(logical_device, image_view, nullptr);
         spdlog::get("console")->info("Successfully closed an image view");
     }
+}
+
+void initialize_graphics_pipeline(const VkDevice& logical_device)
+{
+    /*
+    // Provided by VK_VERSION_1_0
+    typedef enum VkShaderStageFlagBits {
+        VK_SHADER_STAGE_VERTEX_BIT = 0x00000001,
+        VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT = 0x00000002,
+        VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT = 0x00000004,
+        VK_SHADER_STAGE_GEOMETRY_BIT = 0x00000008,
+        VK_SHADER_STAGE_FRAGMENT_BIT = 0x00000010,
+        VK_SHADER_STAGE_COMPUTE_BIT = 0x00000020,
+        VK_SHADER_STAGE_ALL_GRAPHICS = 0x0000001F,
+        VK_SHADER_STAGE_ALL = 0x7FFFFFFF,
+        VK_SHADER_STAGE_RAYGEN_BIT_KHR = 0x00000100,
+        VK_SHADER_STAGE_ANY_HIT_BIT_KHR = 0x00000200,
+        VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR = 0x00000400,
+        VK_SHADER_STAGE_MISS_BIT_KHR = 0x00000800,
+        VK_SHADER_STAGE_INTERSECTION_BIT_KHR = 0x00001000,
+        VK_SHADER_STAGE_CALLABLE_BIT_KHR = 0x00002000,
+        VK_SHADER_STAGE_TASK_BIT_NV = 0x00000040,
+        VK_SHADER_STAGE_MESH_BIT_NV = 0x00000080,
+        VK_SHADER_STAGE_RAYGEN_BIT_NV = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+        VK_SHADER_STAGE_ANY_HIT_BIT_NV = VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
+        VK_SHADER_STAGE_CLOSEST_HIT_BIT_NV = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+        VK_SHADER_STAGE_MISS_BIT_NV = VK_SHADER_STAGE_MISS_BIT_KHR,
+        VK_SHADER_STAGE_INTERSECTION_BIT_NV = VK_SHADER_STAGE_INTERSECTION_BIT_KHR,
+        VK_SHADER_STAGE_CALLABLE_BIT_NV = VK_SHADER_STAGE_CALLABLE_BIT_KHR,
+    } VkShaderStageFlagBits;
+    */
+    spdlog::get("console")->info("Building the graphics pipeline");
+
+    auto vert_shader_code = read_file("shaders/basic_vert_shader.spv");
+    auto frag_shader_code = read_file("shaders/basic_frag_shader.spv");
+
+    spdlog::get("console")->info("Creating the vertex shader");
+    VkShaderModule vert_shader_module = create_shader_module(vert_shader_code, logical_device);
+    spdlog::get("console")->info("Creating the fragment shader");
+    VkShaderModule frag_shader_module = create_shader_module(frag_shader_code, logical_device);
+
+    VkPipelineShaderStageCreateInfo vert_shader_stage_info{};
+    vert_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vert_shader_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vert_shader_stage_info.module = vert_shader_module;
+    vert_shader_stage_info.pName = "main";
+    // Don't need to specify compile time inputs, set to nullptr
+    vert_shader_stage_info.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo frag_shader_stage_info{};
+    frag_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    frag_shader_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    frag_shader_stage_info.module = frag_shader_module;
+    frag_shader_stage_info.pName = "main";
+    // Don't need to specify compile time inputs, set to nullptr
+    frag_shader_stage_info.pSpecializationInfo = nullptr;
+
+    spdlog::get("console")->info("Creating the shader pipeline");
+    VkPipelineShaderStageCreateInfo shaderStages[] = { vert_shader_stage_info, frag_shader_stage_info };
+
+    // Vertex Input
+    VkPipelineVertexInputStateCreateInfo vertex_input_info{};
+    vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_info.vertexBindingDescriptionCount = 0;
+    vertex_input_info.pVertexBindingDescriptions = nullptr;
+    vertex_input_info.vertexAttributeDescriptionCount = 0;
+    vertex_input_info.pVertexAttributeDescriptions = nullptr;
+
+    /*
+    // Provided by VK_VERSION_1_0
+    typedef struct VkPipelineInputAssemblyStateCreateInfo {
+        VkStructureType                            sType;
+        const void*                                pNext;
+        VkPipelineInputAssemblyStateCreateFlags    flags;
+        VkPrimitiveTopology                        topology;
+        VkBool32                                   primitiveRestartEnable;
+    } VkPipelineInputAssemblyStateCreateInfo;
+    */
+    VkPipelineInputAssemblyStateCreateInfo input_assembly{};
+    input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly.primitiveRestartEnable = VK_FALSE;
+
+    // Viewport
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)extent.width;
+    viewport.height = (float)extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    // Scissors
+    // While viewports define the transformation from the image to the framebuffer, scissor rectangles define in which regions pixels will actually be stored. 
+    // Any pixels outside the scissor rectangles will be discarded by the rasterizer.
+    VkRect2D scissor{};
+    scissor.offset = { 0, 0 };
+    scissor.extent = extent;
+
+    VkPipelineViewportStateCreateInfo viewport_state{};
+    viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_state.viewportCount = 1;
+    viewport_state.pViewports = &viewport;
+    viewport_state.scissorCount = 1;
+    viewport_state.pScissors = &scissor;
+
+    /*
+    // Provided by VK_VERSION_1_0
+    typedef struct VkPipelineRasterizationStateCreateInfo {
+        VkStructureType                            sType;
+        const void*                                pNext;
+        VkPipelineRasterizationStateCreateFlags    flags;
+        VkBool32                                   depthClampEnable;        // controls whether to clamp the fragment’s depth values as described in Depth Test
+        VkBool32                                   rasterizerDiscardEnable; // controls whether primitives are discarded immediately before the rasterization stage.
+        VkPolygonMode                              polygonMode;             // is the triangle rendering mode
+        VkCullModeFlags                            cullMode;                // triangle facing direction used for primitive culling
+        VkFrontFace                                frontFace;               // the front-facing triangle orientation to be used for culling.
+        VkBool32                                   depthBiasEnable;         // bias fragment depth values?
+        float                                      depthBiasConstantFactor; // scalar factor controlling the constant depth value added to each fragment.
+        float                                      depthBiasClamp;          // maximum (or minimum) depth bias of a fragment.
+        float                                      depthBiasSlopeFactor;    // scalar factor applied to a fragment’s slope in depth bias calculations
+        float                                      lineWidth;               // width of rasterized line segments
+    } VkPipelineRasterizationStateCreateInfo;
+    */
+
+    // Rasterizer
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;  // geometry never passes through the rasterizer stage, nothing gets rendered
+    /*
+    VK_POLYGON_MODE_FILL: fill the area of the polygon with fragments
+    VK_POLYGON_MODE_LINE: polygon edges are drawn as lines
+    VK_POLYGON_MODE_POINT: polygon vertices are drawn as points
+    */
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f; // fragments, any line thicker than 1.0f requires you to enable the wideLines GPU feature.
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;    // type of face culling to use
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // specifies the vertex order for faces to be considered front-facing and can be clockwise or counterclockwise.
+    rasterizer.depthBiasEnable = VK_FALSE;  // can be used for shadow mapping, but not used here
+    rasterizer.depthBiasConstantFactor = 0.0f; // Optional
+    rasterizer.depthBiasClamp = 0.0f; // Optional
+    rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
+
+    /*
+    // Provided by VK_VERSION_1_0
+    typedef struct VkPipelineMultisampleStateCreateInfo {
+        VkStructureType                          sType;
+        const void*                              pNext;
+        VkPipelineMultisampleStateCreateFlags    flags;
+        VkSampleCountFlagBits                    rasterizationSamples;
+        VkBool32                                 sampleShadingEnable;
+        float                                    minSampleShading;
+        const VkSampleMask*                      pSampleMask;
+        VkBool32                                 alphaToCoverageEnable;
+        VkBool32                                 alphaToOneEnable;
+    } VkPipelineMultisampleStateCreateInfo;
+    */
+
+    // Multisampling
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampling.minSampleShading = 1.0f; // Optional
+    multisampling.pSampleMask = nullptr; // Optional
+    multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
+    multisampling.alphaToOneEnable = VK_FALSE; // Optional
+
+    // Color Blending
+    // * Mix the old and new value to produce a final color (current)
+    // * Combine the old and new value using a bitwise operation (such as alpha blending)
+    VkPipelineColorBlendAttachmentState color_blend_attachment{};
+    color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    color_blend_attachment.blendEnable = VK_FALSE;
+    color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+    color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+    color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD; // Optional
+    color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+    color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+    color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
+
+    VkPipelineColorBlendStateCreateInfo color_blending{};
+    color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    color_blending.logicOpEnable = VK_FALSE;
+    // If you want to use the second method of blending (bitwise combination), 
+    // then you should set logicOpEnable to VK_TRUE. The bitwise operation can then be specified in the logicOp field. 
+    // Note that this will automatically disable the first method, as if you had set blendEnable to VK_FALSE for every attached framebuffer!
+    color_blending.logicOp = VK_LOGIC_OP_COPY;
+    color_blending.attachmentCount = 1;
+    color_blending.pAttachments = &color_blend_attachment;
+    color_blending.blendConstants[0] = 0.0f; // Optional
+    color_blending.blendConstants[1] = 0.0f; // Optional
+    color_blending.blendConstants[2] = 0.0f; // Optional
+    color_blending.blendConstants[3] = 0.0f; // Optional
+
+    // Dynamic State
+    VkDynamicState dynamic_states[] = {
+    VK_DYNAMIC_STATE_VIEWPORT,
+    VK_DYNAMIC_STATE_LINE_WIDTH
+    };
+
+    // This struct can be substituted by a nullptr later on if you don't have any dynamic state. (I don't)
+    VkPipelineDynamicStateCreateInfo dynamic_state{};
+    dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic_state.dynamicStateCount = 2;
+    dynamic_state.pDynamicStates = dynamic_states;
+
+    // Uniform values need to be specified during pipeline creation by creating a VkPipelineLayout object
+    VkPipelineLayoutCreateInfo pipeline_layout_Info{};
+    pipeline_layout_Info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_Info.setLayoutCount = 0; // Optional
+    pipeline_layout_Info.pSetLayouts = nullptr; // Optional
+    pipeline_layout_Info.pushConstantRangeCount = 0; // Optional
+    pipeline_layout_Info.pPushConstantRanges = nullptr; // Optional
+
+    if (vkCreatePipelineLayout(logical_device, &pipeline_layout_Info, nullptr, &pipeline_layout) != VK_SUCCESS) {
+        std::string err_str = "failed to create pipeline layout!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+
+    vkDestroyShaderModule(logical_device, frag_shader_module, nullptr);
+    vkDestroyShaderModule(logical_device, vert_shader_module, nullptr);
+}
+
+void close_graphics_pipeline(const VkDevice& logical_device)
+{
+    vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
+}
+
+void initialize_render_pass(const VkDevice& logical_device)
+{
+    VkAttachmentDescription color_attachment{};
+    color_attachment.format = surface_format.format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;   // no multisampling
+    // The loadOp and storeOp determine what to do with the data in the attachment before rendering and after rendering. 
+    /*
+    VK_ATTACHMENT_LOAD_OP_LOAD: Preserve the existing contents of the attachment
+    VK_ATTACHMENT_LOAD_OP_CLEAR: Clear the values to a constant at the start
+    VK_ATTACHMENT_LOAD_OP_DONT_CARE: Existing contents are undefined; we don't care about them
+    */
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;  // clear the framebuffer to black before drawing a new frame
+    /*
+    VK_ATTACHMENT_STORE_OP_STORE: Rendered contents will be stored in memory and can be read later
+    VK_ATTACHMENT_STORE_OP_DONT_CARE: Contents of the framebuffer will be undefined after the rendering
+    */
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // We're interested in seeing the rendered triangle on the screen, so we're going with the store operation here.
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    /*
+    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: Images used as color attachment
+    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: Images to be presented in the swap chain
+    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: Images to be used as destination for a memory copy operation
+    */
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;     // The initialLayout specifies which layout the image will have before the render pass begins
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // The finalLayout specifies the layout to automatically transition to when the render pass finishes
+
+    VkAttachmentReference color_attachment_reference{};
+    color_attachment_reference.attachment = 0;
+    color_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;    // graphics, as opposed to compute
+    // The index of the attachment in this array is directly referenced from the fragment shader with the layout(location = 0) out vec4 outColor directive!
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_reference;
+    /*
+    pInputAttachments: Attachments that are read from a shader
+    pResolveAttachments: Attachments used for multisampling color attachments
+    pDepthStencilAttachment: Attachment for depth and stencil data
+    pPreserveAttachments: Attachments that are not used by this subpass, but for which the data must be preserved
+    */
+
+    // Render Pass
+    VkRenderPassCreateInfo render_pass_info{};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_info.attachmentCount = 1;
+    render_pass_info.pAttachments = &color_attachment;
+    render_pass_info.subpassCount = 1;
+    render_pass_info.pSubpasses = &subpass;
+
+    /*
+    The VkAttachmentReference does not reference the attachment object directly, it references the index in the attachments array specified in VkRenderPassCreateInfo. 
+    This allows you to reuse the same attachments for different purposes.
+    Thanks: https://vulkan-tutorial.com/en/Drawing_a_triangle/Graphics_pipeline_basics/Render_passes
+    */
+    if (vkCreateRenderPass(logical_device, &render_pass_info, nullptr, &render_pass) != VK_SUCCESS) {
+        std::string err_str = "failed to create render pass!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+}
+
+void close_render_pass(const VkDevice& logical_device)
+{
+    vkDestroyRenderPass(logical_device, render_pass, nullptr);
+}
+
+VkShaderModule create_shader_module(const std::vector<char>& code, const VkDevice& logical_device)
+{
+    // The bytecode is stored in an std::vector where the default allocator already ensures that the data satisfies the worst case alignment requirements.
+    VkShaderModuleCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    create_info.codeSize = code.size();
+    // the size of the bytecode is specified in bytes, but the bytecode pointer is a uint32_t pointer rather than a char pointer
+    create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+    VkShaderModule shader_module;
+    if (vkCreateShaderModule(logical_device, &create_info, nullptr, &shader_module) != VK_SUCCESS)
+    {
+        std::string err_str = "failed to create shader module!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+
+    return shader_module;
 }
 
 int main()
@@ -844,7 +1189,7 @@ int main()
     spdlog::get("console")->info("Initializing the GLFW window");
     GLFWwindow* window = nullptr;
     uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
+    //const char** glfwExtensions;
     initialize_window(&window);
 
     // Initialize Vulkan
@@ -870,6 +1215,10 @@ int main()
     get_swap_chain_images(logical_device, swap_chain, swap_chain_images);
     // Initialize image views
     initialize_image_views(logical_device);
+    // Initialize the render pass
+    initialize_render_pass(logical_device));
+    // Initialize the graphics pipeline
+    initialize_graphics_pipeline(logical_device);
 
     while (!glfwWindowShouldClose(window)) 
     {
@@ -929,6 +1278,8 @@ int main()
         }
     }
 
+    close_graphics_pipeline(logical_device);
+    close_render_pass();
     close_image_views(logical_device);
     close_swap_chain(logical_device, swap_chain);
     close_vulkan_logical_device(logical_device);
