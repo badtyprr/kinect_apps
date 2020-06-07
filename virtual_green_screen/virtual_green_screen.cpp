@@ -62,6 +62,7 @@ std::vector<VkImage> swap_chain_images;
 std::vector<VkImageView> swap_chain_image_views;
 VkRenderPass render_pass;
 VkPipelineLayout pipeline_layout;
+VkPipeline graphics_pipeline;
 
 
 void log_frame_info(const k4a_image_t &image)
@@ -165,12 +166,14 @@ void initialize_window(GLFWwindow **window)
 
 void close_window(GLFWwindow* window)
 {
+    spdlog::get("console")->info("Closing the GLFW window...");
     glfwDestroyWindow(window);
     glfwTerminate();
 }
 
 void close_kinect(const k4a_device_t &kinect)
 {
+    spdlog::get("console")->info("Closing the Kinect camera...");
     // Close Cameras
     k4a_device_stop_cameras(kinect);
     // Close Kinect Device
@@ -244,6 +247,7 @@ void initialize_vulkan(VkInstance *instance)
 
 void close_vulkan(const VkInstance &instance)
 {
+    spdlog::get("console")->info("Closing the Vulkan instance...");
     vkDestroyInstance(instance, nullptr);
 }
 
@@ -432,12 +436,13 @@ void initialize_vulkan_logical_device(const VkPhysicalDevice& physical_device, V
 
 void close_vulkan_logical_device(const VkDevice &logical_device)
 {
+    spdlog::get("console")->info("Closing the Vulkan logical device...");
     vkDestroyDevice(logical_device, nullptr);
 }
 
 void close_vulkan_physical_device(const VkPhysicalDevice &physical_device)
 {
-    
+    spdlog::get("console")->info("Closing the Vulkan physical device...");
 }
 
 void initialize_surface(const VkInstance &instance, GLFWwindow *window, VkSurfaceKHR *surface)
@@ -452,6 +457,7 @@ void initialize_surface(const VkInstance &instance, GLFWwindow *window, VkSurfac
 
 void close_surface(const VkInstance& instance, const VkSurfaceKHR& surface)
 {
+    spdlog::get("console")->info("Closing the Vulkan surface...");
     vkDestroySurfaceKHR(instance, surface, nullptr);
 }
 
@@ -712,6 +718,7 @@ void initialize_swap_chain(const VkDevice& logical_device, const VkPhysicalDevic
 
 void close_swap_chain(const VkDevice& logical_device, const VkSwapchainKHR& swap_chain)
 {
+    spdlog::get("console")->info("Closing the Vulkan swap chain...");
     vkDestroySwapchainKHR(logical_device, swap_chain, nullptr);
 }
 
@@ -806,7 +813,7 @@ void close_image_views(const VkDevice& logical_device)
     for (const auto& image_view : swap_chain_image_views)
     {
         vkDestroyImageView(logical_device, image_view, nullptr);
-        spdlog::get("console")->info("Successfully closed an image view");
+        spdlog::get("console")->info("Closed a Vulkan image view");
     }
 }
 
@@ -866,7 +873,7 @@ void initialize_graphics_pipeline(const VkDevice& logical_device)
     frag_shader_stage_info.pSpecializationInfo = nullptr;
 
     spdlog::get("console")->info("Creating the shader pipeline");
-    VkPipelineShaderStageCreateInfo shaderStages[] = { vert_shader_stage_info, frag_shader_stage_info };
+    VkPipelineShaderStageCreateInfo shader_stages[] = { vert_shader_stage_info, frag_shader_stage_info };
 
     // Vertex Input
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
@@ -1030,12 +1037,48 @@ void initialize_graphics_pipeline(const VkDevice& logical_device)
         throw std::runtime_error(err_str);
     }
 
+    // Create Graphics Pipeline
+    // All of these combined fully define the functionality of the graphics pipeline, so we can now begin filling in the 
+    // VkGraphicsPipelineCreateInfo structure at the end of the createGraphicsPipeline function.But before the calls to 
+    // vkDestroyShaderModule because these are still to be used during the creation.
+    VkGraphicsPipelineCreateInfo pipeline_info{};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    // Referencing the array of VkPipelineShaderStageCreateInfo structs
+    pipeline_info.stageCount = 2;   // vertex and fragment shaders
+    pipeline_info.pStages = shader_stages;
+    // fixed-function stage in pipeline_layout
+    pipeline_info.pVertexInputState = &vertex_input_info;
+    pipeline_info.pInputAssemblyState = &input_assembly;    // how elements (like triangles) are constructed
+    pipeline_info.pViewportState = &viewport_state;
+    pipeline_info.pRasterizationState = &rasterizer;
+    pipeline_info.pMultisampleState = &multisampling;
+    pipeline_info.pDepthStencilState = nullptr;             // Optional, since we're not using
+    pipeline_info.pColorBlendState = &color_blending;
+    pipeline_info.pDynamicState = nullptr;                  // Optional, since we're not using, although the structure is setup above
+    // Pipeline layout (uniform variables and the like)
+    pipeline_info.layout = pipeline_layout;
+    // Render pass pipeline, index of the subpass
+    // Render pass pipelines must be compatible with subpass pipelines: https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#renderpass-compatibility
+    pipeline_info.renderPass = render_pass;
+    pipeline_info.subpass = 0;
+    // Vulkan allows you to create a new graphics pipeline by deriving from an existing pipeline. 
+    // The idea of pipeline derivatives is that it is less expensive to set up pipelines when they have 
+    // much functionality in common with an existing pipeline and switching between pipelines from the same parent can also be done quicker
+    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;      // Optional
+    pipeline_info.basePipelineIndex = -1;                   // Optional
+
+    if (vkCreateGraphicsPipelines(logical_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create graphics pipeline!");
+    }
+
     vkDestroyShaderModule(logical_device, frag_shader_module, nullptr);
     vkDestroyShaderModule(logical_device, vert_shader_module, nullptr);
 }
 
 void close_graphics_pipeline(const VkDevice& logical_device)
 {
+    spdlog::get("console")->info("Closing the Vulkan graphics pipeline...");
+    vkDestroyPipeline(logical_device, graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
 }
 
@@ -1104,6 +1147,7 @@ void initialize_render_pass(const VkDevice& logical_device)
 
 void close_render_pass(const VkDevice& logical_device)
 {
+    spdlog::get("console")->info("Closing the Vulkan render pass...");
     vkDestroyRenderPass(logical_device, render_pass, nullptr);
 }
 
@@ -1216,7 +1260,7 @@ int main()
     // Initialize image views
     initialize_image_views(logical_device);
     // Initialize the render pass
-    initialize_render_pass(logical_device));
+    initialize_render_pass(logical_device);
     // Initialize the graphics pipeline
     initialize_graphics_pipeline(logical_device);
 
@@ -1278,8 +1322,10 @@ int main()
         }
     }
 
+    spdlog::get("console")->info("Main loop has exited!");
+
     close_graphics_pipeline(logical_device);
-    close_render_pass();
+    close_render_pass(logical_device);
     close_image_views(logical_device);
     close_swap_chain(logical_device, swap_chain);
     close_vulkan_logical_device(logical_device);
