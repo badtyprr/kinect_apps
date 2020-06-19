@@ -63,6 +63,9 @@ std::vector<VkImageView> swap_chain_image_views;
 VkRenderPass render_pass;
 VkPipelineLayout pipeline_layout;
 VkPipeline graphics_pipeline;
+std::vector<VkFramebuffer> swap_chain_framebuffers;
+VkCommandPool command_pool;
+std::vector<VkCommandBuffer> command_buffers;
 
 
 void log_frame_info(const k4a_image_t &image)
@@ -1068,7 +1071,13 @@ void initialize_graphics_pipeline(const VkDevice& logical_device)
     pipeline_info.basePipelineIndex = -1;                   // Optional
 
     if (vkCreateGraphicsPipelines(logical_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create graphics pipeline!");
+        std::string err_str = "failed to create graphics pipeline!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+    else
+    {
+        spdlog::get("console")->info("Initialized the Vulkan graphics pipeline");
     }
 
     vkDestroyShaderModule(logical_device, frag_shader_module, nullptr);
@@ -1143,6 +1152,10 @@ void initialize_render_pass(const VkDevice& logical_device)
         spdlog::get("console")->error(err_str);
         throw std::runtime_error(err_str);
     }
+    else
+    {
+        spdlog::get("console")->info("Initialized the Vulkan render pass pipeline");
+    }
 }
 
 void close_render_pass(const VkDevice& logical_device)
@@ -1167,8 +1180,180 @@ VkShaderModule create_shader_module(const std::vector<char>& code, const VkDevic
         spdlog::get("console")->error(err_str);
         throw std::runtime_error(err_str);
     }
+    else
+    {
+        spdlog::get("console")->info("Created a shader module");
+    }
 
     return shader_module;
+}
+
+void initialize_framebuffers(const VkDevice& logical_device)
+{
+    swap_chain_framebuffers.resize(swap_chain_image_views.size());
+
+    for (size_t i = 0; i < swap_chain_image_views.size(); i++)
+    {
+        VkImageView attachments[] = { swap_chain_image_views[i] };
+
+        VkFramebufferCreateInfo framebuffer_info{};
+        framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_info.pNext = nullptr;
+        framebuffer_info.renderPass = render_pass;
+        framebuffer_info.attachmentCount = 1;
+        framebuffer_info.pAttachments = attachments;
+        framebuffer_info.width = extent.width;
+        framebuffer_info.height = extent.height;
+        framebuffer_info.layers = 1;
+
+        if (vkCreateFramebuffer(logical_device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]) != VK_SUCCESS)
+        {
+            std::string err_str = "failed to create framebuffer!";
+            spdlog::get("console")->error(err_str);
+            throw std::runtime_error(err_str);
+        }
+        else
+        {
+            spdlog::get("console")->info("Initialized a framebuffer {}", i);
+        }
+    }
+}
+
+void close_framebuffers(const VkDevice& logical_device)
+{
+    for (auto framebuffer : swap_chain_framebuffers)
+    {
+        spdlog::get("console")->info("Destroying framebuffer");
+        vkDestroyFramebuffer(logical_device, framebuffer, nullptr);
+    }
+}
+
+void initialize_command_pool(const VkPhysicalDevice& physical_device, const VkSurfaceKHR& surface, const VkDevice& logical_device)
+{
+    QueueFamilyIndices queue_family_indices = find_queue_families(physical_device, surface);
+
+    /*
+    Flags for pool info
+    // Provided by VK_VERSION_1_0
+    typedef enum VkCommandPoolCreateFlagBits {
+        VK_COMMAND_POOL_CREATE_TRANSIENT_BIT = 0x00000001,
+        VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT = 0x00000002,
+        VK_COMMAND_POOL_CREATE_PROTECTED_BIT = 0x00000004,
+    } VkCommandPoolCreateFlagBits;
+    */
+
+    VkCommandPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+    pool_info.flags = 0;    // not transient and not individually recorded (also not protected)
+
+    if (vkCreateCommandPool(logical_device, &pool_info, nullptr, &command_pool) != VK_SUCCESS)
+    {
+        std::string err_str = "Failed to initialize command pool!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+    else
+    {
+        spdlog::get("console")->info("Initialized the command pool");
+    }
+}
+
+void close_command_pool(const VkDevice& logical_device)
+{
+    spdlog::get("console")->info("Closing the command pool");
+    vkDestroyCommandPool(logical_device, command_pool, nullptr);
+}
+
+void initialize_command_buffers(const VkDevice& logical_device)
+{
+    spdlog::get("console")->info("Initializing command buffers");
+    command_buffers.resize(swap_chain_framebuffers.size());
+
+    /*
+    VK_COMMAND_BUFFER_LEVEL_PRIMARY: Can be submitted to a queue for execution, but cannot be called from other command buffers.
+    VK_COMMAND_BUFFER_LEVEL_SECONDARY: Cannot be submitted directly, but can be called from primary command buffers.
+    */
+
+    VkCommandBufferAllocateInfo allocate_info{};
+    allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocate_info.commandPool = command_pool;
+    allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocate_info.commandBufferCount = (uint32_t)command_buffers.size();
+
+    if (vkAllocateCommandBuffers(logical_device, &allocate_info, command_buffers.data()) != VK_SUCCESS)
+    {
+        std::string err_str = "failed to allocate command buffers!";
+        spdlog::get("console")->error(err_str);
+        throw std::runtime_error(err_str);
+    }
+    else
+    {
+        spdlog::get("console")->info("Allocated command buffers");
+    }
+
+    for (size_t i = 0; i < command_buffers.size(); i++) 
+    {
+        /*
+        // Provided by VK_VERSION_1_0
+        typedef enum VkCommandBufferUsageFlagBits {
+            VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT = 0x00000001,
+            VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT = 0x00000002,
+            VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT = 0x00000004,
+        } VkCommandBufferUsageFlagBits;
+
+        VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT: The command buffer will be rerecorded right after executing it once.
+        VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT: This is a secondary command buffer that will be entirely within a single render pass.
+        VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT: The command buffer can be resubmitted while it is also already pending execution.
+        */
+        VkCommandBufferBeginInfo begin_info{};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags = 0; // Optional
+        begin_info.pInheritanceInfo = nullptr; // Only used for secondary command buffers
+
+        if (vkBeginCommandBuffer(command_buffers[i], &begin_info) != VK_SUCCESS) {
+            std::string err_str = "failed to begin recording command buffer!";
+            spdlog::get("console")->error(err_str);
+            throw std::runtime_error(err_str);
+        }
+        else
+        {
+            spdlog::get("console")->info("Began recording command buffer");
+        }
+
+        VkRenderPassBeginInfo render_pass_info{};
+        render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        render_pass_info.renderPass = render_pass;
+        render_pass_info.framebuffer = swap_chain_framebuffers[i];
+        render_pass_info.renderArea.offset = { 0, 0 };
+        render_pass_info.renderArea.extent = extent;
+
+        VkClearValue clear_color = { 0.0f, 0.0f, 0.0f, 1.0f };  // black, full opacity
+        render_pass_info.clearValueCount = 1;
+        render_pass_info.pClearValues = &clear_color;
+
+        /*
+        VK_SUBPASS_CONTENTS_INLINE specifies that the contents of the subpass will be recorded inline in the primary command buffer, and secondary command buffers must not be executed within the subpass.
+        VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS specifies that the contents are recorded in secondary command buffers that will be called from the primary command buffer, and vkCmdExecuteCommands is the only valid command on the command buffer until vkCmdNextSubpass or vkCmdEndRenderPass.
+        */
+        vkCmdBeginRenderPass(command_buffers[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+        // Bind the graphics pipeline
+        vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);  // graphics pipeline, as opposed to a compute pipeline
+        // Draw command
+        vkCmdDraw(command_buffers[i], 3, 1, 0, 0); // 3 vertices, 1 (not instance rendering), 0-indexed, 0-indexed
+        vkCmdEndRenderPass(command_buffers[i]);
+        // End command buffer
+        if (vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) 
+        {
+            std::string err_str = "failed to record command buffer!";
+            spdlog::get("console")->error(err_str);
+            throw std::runtime_error(err_str);
+        }
+        else
+        {
+            spdlog::get("console")->info("Recorded command buffer successfully");
+        }
+    }
 }
 
 int main()
@@ -1263,6 +1448,11 @@ int main()
     initialize_render_pass(logical_device);
     // Initialize the graphics pipeline
     initialize_graphics_pipeline(logical_device);
+    // Initialize the framebuffers
+    initialize_framebuffers(logical_device);
+    // Initialize command pool and buffers
+    initialize_command_pool(physical_device, surface, logical_device);
+    initialize_command_buffers(logical_device);
 
     while (!glfwWindowShouldClose(window)) 
     {
@@ -1324,6 +1514,8 @@ int main()
 
     spdlog::get("console")->info("Main loop has exited!");
 
+    close_command_pool(logical_device);
+    close_framebuffers(logical_device);
     close_graphics_pipeline(logical_device);
     close_render_pass(logical_device);
     close_image_views(logical_device);

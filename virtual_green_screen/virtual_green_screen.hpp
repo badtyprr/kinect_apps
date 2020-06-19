@@ -122,6 +122,11 @@ void close_graphics_pipeline(const VkDevice& logical_device);
 VkShaderModule create_shader_module(const std::vector<char>& code, const VkDevice& logical_device);
 void initialize_render_pass(const VkDevice& logical_device);
 void close_render_pass(const VkDevice& logical_device);
+void initialize_framebuffers(const VkDevice& logical_device);
+void close_framebuffers(const VkDevice& logical_device);
+void initialize_command_pool(const VkPhysicalDevice& physical_device, const VkSurfaceKHR& surface, const VkDevice& logical_device);
+void close_command_pool(const VkDevice& logical_device);
+void initialize_command_buffers(const VkDevice& logical_device);
 
 /*
  * Extensions
